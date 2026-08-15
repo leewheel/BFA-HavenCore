@@ -222,7 +222,10 @@ IPLocationFile = ""
 #                                                                           Unix/Linux)
 #        Default:     "127.0.0.1;3306;trinity;trinity;auth"
 
-LoginDatabaseInfo = "127.0.0.1;3306;root;admin;bfa_auth"
+#By leewheel 2026-08-15
+# 修改数据库配置为端口3368, 用户名/密码: trinity/trinity
+LoginDatabaseInfo = "127.0.0.1;3368;trinity;trinity;bfa_auth"
+#End By leewheel
 
 #
 #    LoginDatabase.WorkerThreads

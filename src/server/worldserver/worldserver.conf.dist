@@ -108,10 +108,13 @@ LogsDir = ".\Logs"
 #    Don't open port on firewall to external connections (it belongs to mysql, not to wow server).
 #    The username you choose must have permisions to create/alter/rename tables.
 
-LoginDatabaseInfo     = "127.0.0.1;3306;root;admin;bfa_auth"
-WorldDatabaseInfo     = "127.0.0.1;3306;root;admin;bfa_world"
-CharacterDatabaseInfo = "127.0.0.1;3306;root;admin;bfa_characters"
-HotfixDatabaseInfo    = "127.0.0.1;3306;root;admin;bfa_hotfixes"
+#By leewheel 2026-08-15
+# 修改数据库配置为端口3368, 用户名/密码: trinity/trinity
+LoginDatabaseInfo     = "127.0.0.1;3368;trinity;trinity;bfa_auth"
+WorldDatabaseInfo     = "127.0.0.1;3368;trinity;trinity;bfa_world"
+CharacterDatabaseInfo = "127.0.0.1;3368;trinity;trinity;bfa_characters"
+HotfixDatabaseInfo    = "127.0.0.1;3368;trinity;trinity;bfa_hotfixes"
+#End By leewheel
 
 #
 #    LoginDatabase.WorkerThreads
