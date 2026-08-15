@@ -1,4 +1,4 @@
-/*
+﻿/*
  * 2026 BFA-HavenCore
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -17,13 +17,12 @@
 
 #include <string>
 #include <iostream>
-
 #include "TileAssembler.h"
 #include "Banner.h"
 
 int main(int argc, char* argv[])
 {
-    Trinity::Banner::Show("VMAP assembler", [](char const* text) { std::cout << text << std::endl; }, nullptr);
+        Trinity::Banner::Show("VMAP assembler", [](char const* text) { std::cout << text << std::endl; }, nullptr);
 
     std::string src = "Buildings";
     std::string dest = "vmaps";

@@ -1,0 +1,30 @@
+﻿# EditorConfig is awesome: https://editorconfig.org
+# By leewheel 2026-08-15
+# 支持中文，统一使用UTF-8编码
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+indent_size = 4
+trim_trailing_whitespace = true
+
+[*.cmake]
+indent_size = 4
+
+[CMakeLists.txt]
+indent_size = 4
+
+[*.conf]
+indent_size = 4
+
+[*.sql]
+indent_size = 4
+
+[*.{c,h,cpp,hpp}]
+indent_size = 4
+
+# End By leewheel

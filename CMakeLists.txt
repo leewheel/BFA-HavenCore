@@ -1,4 +1,4 @@
-# 2026 BFA-HavenCore
+﻿# 2026 BFA-HavenCore
 #
 # This file is free software; as a special exception the author gives
 # unlimited permission to copy and/or distribute it, with or without
@@ -17,6 +17,16 @@ set(CMAKE_DISABLE_IN_SOURCE_BUILD ON)
 
 # Set projectname (must be done AFTER setting configurationtypes)
 project(BfaCore)
+
+#By leewheel 2026-08-15
+# 设置源文件编码为UTF-8，解决中文乱码问题
+# /utf-8 同时设置了源文件编码和执行字符集为UTF-8
+if(MSVC)
+    add_compile_options(/utf-8)
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    add_compile_options(-finput-charset=UTF-8 -fexec-charset=UTF-8)
+endif()
+#End By leewheel
 
 # CMake policies (can not be handled elsewhere)
 cmake_policy(SET CMP0005 NEW)

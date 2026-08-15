@@ -1,4 +1,4 @@
-/*
+﻿/*
  * 2026 BFA-HavenCore
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -38,7 +38,6 @@
 #include <cstdio>
 #include <cerrno>
 #include <sys/stat.h>
-
 #ifdef WIN32
     #include <direct.h>
     #define mkdir _mkdir
@@ -400,7 +399,7 @@ static bool RetardCheck()
 
 int main(int argc, char ** argv)
 {
-    Trinity::Banner::Show("VMAP data extractor", [](char const* text) { printf("%s\n", text); }, nullptr);
+        Trinity::Banner::Show("VMAP data extractor", [](char const* text) { printf("%s\n", text); }, nullptr);
 
     bool success = true;
     const char *versionString = "V4.06 2018_02";
