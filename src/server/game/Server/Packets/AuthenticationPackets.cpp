@@ -20,6 +20,7 @@
 #include "CharacterTemplateDataStore.h"
 #include "CryptoHash.h"
 #include "HMAC.h"
+#include "Log.h"
 #include "ObjectMgr.h"
 #include "RSA.h"
 #include "Util.h"
@@ -279,7 +280,15 @@ WorldPacket const* WorldPackets::Auth::ConnectTo::Write()
 
     Trinity::Crypto::RsaSignature::SHA256 digestGenerator;
     std::vector<uint8> signature;
-    ConnectToRSA->Sign(signBuffer.contents(), signBuffer.size(), digestGenerator, signature);
+    // By leewheel 2026-08-15
+    // 防御性加固：ConnectToRSA 为全局单例，若初始化失败(InitializeEncryption 返回 false)则为空指针；
+    // Sign 返回值也必须检查，签名失败时返回 nullptr，由调用方决定处理，避免空指针/空签名发包。
+    // End By leewheel
+    if (!ConnectToRSA || !ConnectToRSA->Sign(signBuffer.contents(), signBuffer.size(), digestGenerator, signature))
+    {
+        TC_LOG_ERROR("network", "WorldPackets::Auth::ConnectTo::Write: RSA 签名失败(ConnectToRSA 未初始化或签名错误)，无法发送 SMSG_CONNECT_TO");
+        return nullptr;
+    }
 
     _worldPacket.append(signature.data(), signature.size());
     _worldPacket.append(whereBuffer);
@@ -315,7 +324,15 @@ WorldPacket const* WorldPackets::Auth::EnterEncryptedMode::Write()
 
     Trinity::Crypto::RsaSignature::HMAC_SHA256 digestGenerator(EncryptionKey, 16);
     std::vector<uint8> signature;
-    ConnectToRSA->Sign(msg, digestGenerator, signature);
+    // By leewheel 2026-08-15
+    // 防御性加固：ConnectToRSA 判空 + Sign 返回值检查，签名失败时返回 nullptr，
+    // 调用方(WorldSocket)判空后关闭连接，避免空指针崩溃(本次崩溃日志的直接触发点)。
+    // End By leewheel
+    if (!ConnectToRSA || !ConnectToRSA->Sign(msg, digestGenerator, signature))
+    {
+        TC_LOG_ERROR("network", "WorldPackets::Auth::EnterEncryptedMode::Write: RSA 签名失败(ConnectToRSA 未初始化或签名错误)，无法发送 SMSG_ENTER_ENCRYPTED_MODE");
+        return nullptr;
+    }
 
     _worldPacket.append(signature.data(), signature.size());
     _worldPacket.WriteBit(Enabled);

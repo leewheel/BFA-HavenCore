@@ -78,8 +78,11 @@ public:
 
     bool Sign(uint8 const* message, std::size_t messageLength, DigestGenerator& generator, std::vector<uint8>& output);
 
+    // By leewheel 2026-08-15
+    // 移除 _ctx 成员：Sign 改为每次调用创建独立 EVP_MD_CTX，
+    // 修复多线程并发调用 Sign 复用同一 _ctx 导致的空指针崩溃。
+    // End By leewheel
 private:
-    EVP_MD_CTX* _ctx = nullptr;
     EVP_PKEY* _key = nullptr;
 };
 }

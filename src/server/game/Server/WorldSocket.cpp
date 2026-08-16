@@ -863,7 +863,17 @@ void WorldSocket::LoadSessionPermissionsCallback(PreparedQueryResult result)
     // RBAC must be loaded before adding session to check for skip queue permission
     _worldSession->GetRBACData()->LoadFromDBCallback(result);
 
-    SendPacketAndLogOpcode(*WorldPackets::Auth::EnterEncryptedMode(_encryptKey.data(), true).Write());
+    // By leewheel 2026-08-15
+    // 防御性加固：Write() 签名失败时返回 nullptr，判空后关闭连接，避免空指针解引用崩溃。
+    // End By leewheel
+    WorldPacket const* packet = WorldPackets::Auth::EnterEncryptedMode(_encryptKey.data(), true).Write();
+    if (!packet)
+    {
+        TC_LOG_ERROR("network", "WorldSocket::LoadSessionPermissionsCallback: EnterEncryptedMode 签名失败，关闭连接");
+        DelayedCloseSocket();
+        return;
+    }
+    SendPacketAndLogOpcode(*packet);
 }
 
 void WorldSocket::HandleAuthContinuedSession(std::shared_ptr<WorldPackets::Auth::AuthContinuedSession> authSession)
@@ -926,7 +936,17 @@ void WorldSocket::HandleAuthContinuedSessionCallback(std::shared_ptr<WorldPacket
     // only first 16 bytes of the hmac are used
     memcpy(_encryptKey.data(), encryptKeyGen.GetDigest().data(), 16);
 
-    SendPacketAndLogOpcode(*WorldPackets::Auth::EnterEncryptedMode(_encryptKey.data(), true).Write());
+    // By leewheel 2026-08-15
+    // 防御性加固：Write() 签名失败时返回 nullptr，判空后关闭连接，避免空指针解引用崩溃。
+    // End By leewheel
+    WorldPacket const* packet = WorldPackets::Auth::EnterEncryptedMode(_encryptKey.data(), true).Write();
+    if (!packet)
+    {
+        TC_LOG_ERROR("network", "WorldSocket::HandleAuthContinuedSessionCallback: EnterEncryptedMode 签名失败，关闭连接");
+        DelayedCloseSocket();
+        return;
+    }
+    SendPacketAndLogOpcode(*packet);
     AsyncRead();
 }
 

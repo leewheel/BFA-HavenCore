@@ -749,7 +749,17 @@ void WorldSession::SendConnectToInstance(WorldPackets::Auth::ConnectToSerial ser
     }
     connectTo.Con = CONNECTION_TYPE_INSTANCE;
 
-    SendPacket(connectTo.Write());
+    // By leewheel 2026-08-15
+    // 防御性加固：ConnectTo::Write 签名失败时返回 nullptr，SendPacket 内部会解引用指针，
+    // 必须判空避免空指针崩溃。
+    // End By leewheel
+    WorldPacket const* packet = connectTo.Write();
+    if (!packet)
+    {
+        TC_LOG_ERROR("network", "WorldSession::SendConnectToInstance: ConnectTo 签名失败，无法发送 SMSG_CONNECT_TO (account %u)", GetAccountId());
+        return;
+    }
+    SendPacket(packet);
 }
 
 void WorldSession::LoadAccountData(PreparedQueryResult result, uint32 mask)

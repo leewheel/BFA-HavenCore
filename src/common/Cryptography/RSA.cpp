@@ -36,6 +36,17 @@ struct BIODeleter
     }
 };
 
+// By leewheel 2026-08-15
+// 用于 Sign 中 RAII 管理每次调用独立创建的 EVP_MD_CTX，保证异常/提前返回路径都不会泄漏。
+struct EVP_MD_CTXDeleter
+{
+    void operator()(EVP_MD_CTX* ctx)
+    {
+        EVP_MD_CTX_free(ctx);
+    }
+};
+// End By leewheel
+
 // The client expects the EnterEncryptedMode signature to be a PKCS1 signature carrying the sha256 algorithm id,
 // but computed over an HMAC-SHA256 of the message - wrap our HMAC in a custom EVP_MD to feed it to EVP_DigestSign
 struct HMAC_SHA256_MD
@@ -99,8 +110,12 @@ struct HMAC_SHA256_MD
 
     static int UpdateData(EVP_MD_CTX* ctx, const void* data, size_t count)
     {
+        // By leewheel 2026-08-15
+        // 防御性检查：md_data 为 NULL（EVP_DigestSignInit 失败/上下文未就绪）时直接返回失败，
+        // 避免空指针解引用崩溃（原崩溃点即此类空指针访问）。
+        // End By leewheel
         CTX_DATA* ctxData = reinterpret_cast<CTX_DATA*>(EVP_MD_CTX_md_data(ctx));
-        if (!ctxData->hmac)
+        if (!ctxData || !ctxData->hmac)
             return 0;
 
         ctxData->hmac->UpdateData(reinterpret_cast<uint8 const*>(data), count);
@@ -109,8 +124,11 @@ struct HMAC_SHA256_MD
 
     static int Finalize(EVP_MD_CTX* ctx, unsigned char* md)
     {
+        // By leewheel 2026-08-15
+        // 同上：md_data 为空时返回失败，防止空指针解引用。
+        // End By leewheel
         CTX_DATA* ctxData = reinterpret_cast<CTX_DATA*>(EVP_MD_CTX_md_data(ctx));
-        if (!ctxData->hmac)
+        if (!ctxData || !ctxData->hmac)
             return 0;
 
         ctxData->hmac->Finalize();
@@ -121,8 +139,14 @@ struct HMAC_SHA256_MD
     // post-processing after openssl memcpys from source to dest (no need to cleanup dest)
     static int Copy(EVP_MD_CTX* to, EVP_MD_CTX const* from)
     {
+        // By leewheel 2026-08-15
+        // 防御性检查：源/目标 md_data 为空时按无操作成功处理，避免空指针解引用。
+        // End By leewheel
         CTX_DATA const* ctxDataFrom = reinterpret_cast<CTX_DATA const*>(EVP_MD_CTX_md_data(from));
         CTX_DATA* ctxDataTo = reinterpret_cast<CTX_DATA*>(EVP_MD_CTX_md_data(to));
+
+        if (!ctxDataFrom || !ctxDataTo)
+            return 1;
 
         if (ctxDataFrom->hmac)
             ctxDataTo->hmac = new Trinity::Crypto::HMAC_SHA256(*ctxDataFrom->hmac);
@@ -132,7 +156,13 @@ struct HMAC_SHA256_MD
 
     static int Cleanup(EVP_MD_CTX* ctx)
     {
+        // By leewheel 2026-08-15
+        // 防御性检查：md_data 为空时无操作，避免空指针解引用。
+        // End By leewheel
         CTX_DATA* data = reinterpret_cast<CTX_DATA*>(EVP_MD_CTX_md_data(ctx));
+        if (!data)
+            return 1;
+
         if (data->hmac)
         {
             delete data->hmac;
@@ -167,7 +197,14 @@ EVP_MD const* RsaSignature::HMAC_SHA256::GetGenerator() const
 
 void RsaSignature::HMAC_SHA256::PostInitCustomizeContext(EVP_MD_CTX* ctx)
 {
+    // By leewheel 2026-08-15
+    // 防御性检查：md_data 为 NULL 时无法注入 HMAC 密钥，直接返回；
+    // 后续 EVP_DigestSignUpdate/Final 会因 hmac 为空而失败，Sign 已检查返回值。
+    // End By leewheel
     HMAC_SHA256_MD::CTX_DATA* ctxData = reinterpret_cast<HMAC_SHA256_MD::CTX_DATA*>(EVP_MD_CTX_md_data(ctx));
+    if (!ctxData)
+        return;
+
     if (ctxData->hmac)
         delete ctxData->hmac;
 
@@ -176,19 +213,21 @@ void RsaSignature::HMAC_SHA256::PostInitCustomizeContext(EVP_MD_CTX* ctx)
 
 RsaSignature::RsaSignature()
 {
-    _ctx = Impl::GenericHashImpl::MakeCTX();
+    // By leewheel 2026-08-15
+    // _ctx 成员已移除：Sign 改为每次调用创建独立 EVP_MD_CTX（见 Sign 内注释），
+    // 修复多线程并发调用 Sign 复用同一 _ctx 导致的空指针崩溃。
+    // End By leewheel
 }
 
 RsaSignature::RsaSignature(RsaSignature&& rsa) noexcept
 {
-    _ctx = std::exchange(rsa._ctx, Impl::GenericHashImpl::MakeCTX());
     _key = std::exchange(rsa._key, nullptr);
 }
 
 RsaSignature::~RsaSignature()
 {
-    EVP_MD_CTX_free(_ctx);
     EVP_PKEY_free(_key);
+    _key = nullptr;
 }
 
 bool RsaSignature::LoadKeyFromFile(std::string const& fileName)
@@ -196,6 +235,12 @@ bool RsaSignature::LoadKeyFromFile(std::string const& fileName)
     std::unique_ptr<BIO, BIODeleter> keyBIO(BIO_new_file(fileName.c_str(), "r"));
     if (!keyBIO)
         return false;
+
+    // By leewheel 2026-08-15
+    // 同类成员复用缺陷修复：重复调用 LoadKey 时先释放旧 _key，避免泄漏。
+    // End By leewheel
+    EVP_PKEY_free(_key);
+    _key = nullptr;
 
     _key = EVP_PKEY_new();
     if (!PEM_read_bio_PrivateKey(keyBIO.get(), &_key, nullptr, nullptr))
@@ -212,6 +257,12 @@ bool RsaSignature::LoadKeyFromString(std::string const& keyPem)
     if (!keyBIO)
         return false;
 
+    // By leewheel 2026-08-15
+    // 同类成员复用缺陷修复：重复调用 LoadKey 时先释放旧 _key，避免泄漏。
+    // End By leewheel
+    EVP_PKEY_free(_key);
+    _key = nullptr;
+
     _key = EVP_PKEY_new();
     if (!PEM_read_bio_PrivateKey(keyBIO.get(), &_key, nullptr, nullptr))
         return false;
@@ -221,18 +272,38 @@ bool RsaSignature::LoadKeyFromString(std::string const& keyPem)
 
 bool RsaSignature::Sign(uint8 const* message, std::size_t messageLength, DigestGenerator& generator, std::vector<uint8>& output)
 {
+    // By leewheel 2026-08-15
+    // 修复多线程崩溃(ACCESS_VIOLATION @ PostInitCustomizeContext)：
+    // 原实现复用成员 _ctx，而全局 ConnectToRSA 会被多个网络线程(EnterEncryptedMode，玩家登录)
+    // 与世界线程(ConnectTo，传送/进副本)并发调用 Sign。并发复用同一 EVP_MD_CTX 时，
+    // EVP_DigestSignInit 切换 digest 会先释放旧 md_data 再重建（SHA256 与自定义 HMAC_SHA256
+    // 的 ctx_size 不同，必然 free→zalloc），另一线程此刻读取 EVP_MD_CTX_md_data 得到空指针，
+    // 在 PostInitCustomizeContext 解引用崩溃（崩溃日志寄存器 RAX=0 即 md_data 为 NULL）。
+    // 修复：每次调用创建独立 EVP_MD_CTX（RAII 自动释放），天然线程安全；
+    // 同时检查 EVP_DigestSignInit 返回值，初始化失败(如 _key 无效)时直接返回 false，
+    // 不再继续操作未初始化的上下文。
+    std::unique_ptr<EVP_MD_CTX, EVP_MD_CTXDeleter> ctx(EVP_MD_CTX_new());
+    if (!ctx)
+        return false;
+
+    if (EVP_DigestSignInit(ctx.get(), nullptr, generator.GetGenerator(), nullptr, _key) != 1)
+        return false;
+
+    generator.PostInitCustomizeContext(ctx.get());
+
     size_t signatureLength = 0;
-    EVP_DigestSignInit(_ctx, nullptr, generator.GetGenerator(), nullptr, _key);
-    generator.PostInitCustomizeContext(_ctx);
-    EVP_DigestSignUpdate(_ctx, message, messageLength);
-    int result = EVP_DigestSignFinal(_ctx, nullptr, &signatureLength);
-    if (result == 0)
+    if (EVP_DigestSignUpdate(ctx.get(), message, messageLength) != 1)
+        return false;
+
+    if (EVP_DigestSignFinal(ctx.get(), nullptr, &signatureLength) != 1)
         return false;
 
     output.resize(signatureLength);
-    result = EVP_DigestSignFinal(_ctx, output.data(), &signatureLength);
+    if (EVP_DigestSignFinal(ctx.get(), output.data(), &signatureLength) != 1)
+        return false;
+
     std::reverse(output.begin(), output.end());
-    return result != 0;
+    return true;
 }
 }
 }
