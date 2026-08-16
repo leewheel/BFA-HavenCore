@@ -141,13 +141,27 @@ struct HMAC_SHA256_MD
 
     static int DigestUpdate(void* dctx, unsigned char const* in, size_t inl)
     {
-        reinterpret_cast<CTX_DATA*>(dctx)->hmac->UpdateData(in, inl);
+        // By leewheel 2026-08-16
+        // 防御性检查（review 收尾）：DigestInit 失败/未携带 hmac-key 参数时 hmac 为空，
+        // 直接返回失败避免空指针解引用（与本地 legacy 版修复保持一致）。
+        // End By leewheel
+        CTX_DATA* ctxData = reinterpret_cast<CTX_DATA*>(dctx);
+        if (!ctxData || !ctxData->hmac)
+            return 0;
+
+        ctxData->hmac->UpdateData(in, inl);
         return 1;
     }
 
     static int DigestFinal(void* dctx, unsigned char* out, size_t* outl, size_t outsz)
     {
+        // By leewheel 2026-08-16
+        // 防御性检查：同上，hmac 为空时返回失败，防止空指针解引用。
+        // End By leewheel
         CTX_DATA* ctxData = reinterpret_cast<CTX_DATA*>(dctx);
+        if (!ctxData || !ctxData->hmac)
+            return 0;
+
         ctxData->hmac->Finalize();
         *outl = std::min(ctxData->hmac->GetDigest().size(), outsz);
         memcpy(out, ctxData->hmac->GetDigest().data(), *outl);
@@ -317,7 +331,14 @@ bool RsaSignature::LoadKeyFromFile(std::string const& fileName)
 
     _key = EVP_PKEY_new();
     if (!PEM_read_bio_PrivateKey(keyBIO.get(), &_key, nullptr, nullptr))
+    {
+        // By leewheel 2026-08-16
+        // review 收尾：失败时释放残留的空 _key（EVP_PKEY_new 分配），避免残留无效对象。
+        // End By leewheel
+        EVP_PKEY_free(_key);
+        _key = nullptr;
         return false;
+    }
 
     return true;
 }
@@ -338,7 +359,14 @@ bool RsaSignature::LoadKeyFromString(std::string const& keyPem)
 
     _key = EVP_PKEY_new();
     if (!PEM_read_bio_PrivateKey(keyBIO.get(), &_key, nullptr, nullptr))
+    {
+        // By leewheel 2026-08-16
+        // review 收尾：失败时释放残留的空 _key（EVP_PKEY_new 分配），避免残留无效对象。
+        // End By leewheel
+        EVP_PKEY_free(_key);
+        _key = nullptr;
         return false;
+    }
 
     return true;
 }
@@ -365,6 +393,11 @@ bool RsaSignature::Sign(uint8 const* message, std::size_t messageLength, DigestG
     if (!keyCtx)
         return false;
 
+    // By leewheel 2026-08-16
+    // 说明：EVP_MD_CTX_set_pkey_ctx 返回 void（OpenSSL 3.x），无法检查返回值；
+    // 其内部无失败路径（仅 free 旧 pctx 后赋值）。所有权转移后由 EVP_MD_CTX_free
+    // 统一释放，release() 防止双重释放。
+    // End By leewheel
     EVP_MD_CTX_set_pkey_ctx(ctx.get(), keyCtx.get());
     // 所有权已转移给 EVP_MD_CTX，由 EVP_MD_CTX_free 释放，防止双重释放
     keyCtx.release();
