@@ -865,27 +865,11 @@ void WorldSocket::LoadSessionPermissionsCallback(PreparedQueryResult result)
     _worldSession->GetRBACData()->LoadFromDBCallback(result);
 
     // By leewheel 2026-08-16
-    // 修复客户端无法登录：BFA 8.3.7 客户端认证成功后必须依次收到
-    // SMSG_AUTH_RESPONSE(AUTH_OK) 与全套初始化包（时区/特性状态/促销/客户端缓存
-    // 版本/热修复/教程/bnet 连接状态）才会继续，缺失任一则等待超时断开、弹回登录界面。
-    // 原代码成功路径从未发送 AuthResponse 与初始化包（HandleAuthSession 未调用
-    // InitializeSession），导致客户端始终超时。修复：补发完整初始化序列后再进入
-    // EnterEncryptedMode 加密模式。
+    // 修复客户端无法登录：8.3.7 客户端在认证成功后仅需 SMSG_ENTER_ENCRYPTED_MODE，
+    // 无需 AuthResponse 与初始化包（对照 XYWOWT837 同 837Client 实测：认证后仅发
+    // EEM 即可登录成功）。此前补发的 AuthResponse/初始化包会干扰客户端进入加密
+    // 模式，故不发送。
     // End By leewheel
-    _worldSession->SendAuthResponse(ERROR_OK, false);
-    _worldSession->SendSetTimeZoneInformation();
-    _worldSession->SendFeatureSystemStatusGlueScreen();
-    _worldSession->SendDisplayPromo();
-    _worldSession->SendClientCacheVersion(sWorld->getIntConfig(CONFIG_CLIENTCACHE_VERSION));
-    _worldSession->SendAvailableHotfixes();
-    _worldSession->SendTutorialsData();
-
-    {
-        WorldPackets::Battlenet::ConnectionStatus bnetConnected;
-        bnetConnected.State = 1;
-        _worldSession->SendPacket(bnetConnected.Write());
-    }
-
     // By leewheel 2026-08-15
     // 防御性加固：Write() 签名失败时返回 nullptr，判空后关闭连接，避免空指针解引用崩溃。
     // End By leewheel
