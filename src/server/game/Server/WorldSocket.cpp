@@ -889,7 +889,14 @@ void WorldSocket::LoadSessionPermissionsCallback(PreparedQueryResult result)
     // By leewheel 2026-08-15
     // 防御性加固：Write() 签名失败时返回 nullptr，判空后关闭连接，避免空指针解引用崩溃。
     // End By leewheel
-    WorldPacket const* packet = WorldPackets::Auth::EnterEncryptedMode(_encryptKey.data(), true).Write();
+    // By leewheel 2026-08-16
+    // 修复空包（客户端无法登录）：原代码在临时对象上调用 Write() 后立即取指针，
+    // 临时对象在语句结束即销毁，返回的 WorldPacket 指针悬垂，SendPacketAndLogOpcode
+    // 读取已销毁内存导致 SMSG_ENTER_ENCRYPTED_MODE 实际发出空包，客户端解析失败断开。
+    // 修复：将包对象保存为具名局部变量，保证其生命周期覆盖发送调用。
+    // End By leewheel
+    WorldPackets::Auth::EnterEncryptedMode enterEncryptedMode(_encryptKey.data(), true);
+    WorldPacket const* packet = enterEncryptedMode.Write();
     if (!packet)
     {
         TC_LOG_ERROR("network", "WorldSocket::LoadSessionPermissionsCallback: EnterEncryptedMode 签名失败，关闭连接");
@@ -962,7 +969,12 @@ void WorldSocket::HandleAuthContinuedSessionCallback(std::shared_ptr<WorldPacket
     // By leewheel 2026-08-15
     // 防御性加固：Write() 签名失败时返回 nullptr，判空后关闭连接，避免空指针解引用崩溃。
     // End By leewheel
-    WorldPacket const* packet = WorldPackets::Auth::EnterEncryptedMode(_encryptKey.data(), true).Write();
+    // By leewheel 2026-08-16
+    // 修复续会话路径同样的悬垂指针问题：临时对象调用 Write() 后立即销毁，
+    // 返回指针悬垂导致空包（与 LoadSessionPermissionsCallback 同因）。改为具名局部变量。
+    // End By leewheel
+    WorldPackets::Auth::EnterEncryptedMode enterEncryptedMode(_encryptKey.data(), true);
+    WorldPacket const* packet = enterEncryptedMode.Write();
     if (!packet)
     {
         TC_LOG_ERROR("network", "WorldSocket::HandleAuthContinuedSessionCallback: EnterEncryptedMode 签名失败，关闭连接");
