@@ -274,7 +274,7 @@ class go_ruined_switch : public GameObjectScript
 public:
     go_ruined_switch() : GameObjectScript("go_ruined_switch") { isused = false; }
 
-    bool OnGossipHello(Player* player, GameObject* go) override
+    bool OnGossipHello(Player* /*player*/, GameObject* go) override
     {
         TC_LOG_ERROR("server.worldserver", "====================go_ruined_switch  OnGossipHello  ========= ");
         if (InstanceScript * instance = go->GetInstanceScript())
@@ -331,7 +331,7 @@ struct npc_clear_platform_107937 : public ScriptedAI
 
     void MoveInLineOfSight(Unit* who) override
     {
-        if (Player* player = who->ToPlayer())
+        if (who->ToPlayer())
             if (me->IsWithinDist(who, 10.0f, false))
                 if (instance->GetData(DATA_STAGE_3) == NOT_STARTED)
                     instance->SetData(DATA_STAGE_3, DONE);
@@ -490,7 +490,7 @@ struct npc_webmistress_shinaris_108027 : public ScriptedAI
 
     void MoveInLineOfSight(Unit* who) override
     {
-        if (Player* player = who->ToPlayer())
+        if (who->ToPlayer())
             if (me->IsWithinDist(who, 60.0f, false))
                 if ((instance->GetData(DATA_STAGE_4) == DONE) && (instance->GetData(DATA_STAGE_5) == NOT_STARTED))
                     instance->SetData(DATA_STAGE_5, DONE);
@@ -518,9 +518,8 @@ struct npc_verstok_darkbough_108053 : public ScriptedAI
             me->GetScheduler().Schedule(Milliseconds(6000), [this](TaskContext context)
             {
                 //summon fang
-                TempSummon* fang = me->SummonCreature(107385, Position(2063.92f, 5403.93f, -34.7028f, 0.715101f));
-
-                GameObject* fangloot = me->SummonGameObject(250386, Position(2063.78f, 5403.75f, -34.7747f, 0.7151f), QuaternionData(), WEEK);
+                me->SummonCreature(107385, Position(2063.92f, 5403.93f, -34.7028f, 0.715101f));
+                me->SummonGameObject(250386, Position(2063.78f, 5403.75f, -34.7747f, 0.7151f), QuaternionData(), WEEK);
             });
 
             break;
@@ -531,6 +530,7 @@ struct npc_verstok_darkbough_108053 : public ScriptedAI
     {
         instance = me->GetInstanceScript();
     }
+
 private:
     InstanceScript * instance;
 };

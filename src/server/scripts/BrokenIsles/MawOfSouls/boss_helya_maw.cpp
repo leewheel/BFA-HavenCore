@@ -304,7 +304,7 @@ public:
             Initialize();
         }
 
-        void EnterEvadeMode(EvadeReason reason) override
+        void EnterEvadeMode(EvadeReason /*reason*/) override
         {
             for (auto & it : _pools)
             {
@@ -629,7 +629,7 @@ public:
                 me->GetPlayerListInGrid(players, 250.f);
                 Position pos(BrackWaterBarrageVisualPos);
 
-                for (auto& it : players)
+                for ([[maybe_unused]] auto& it : players)
                     me->SendPlaySpellVisual(pos, _brackwaterSide, 0, 0, 9.0f, true);
 
                 events.ScheduleEvent(EVENT_BRACKWATER_BARRAGE, Seconds(55));
@@ -1144,7 +1144,7 @@ public:
             if (players.empty())
                 return;
 
-            for (auto & it : players)
+            for ([[maybe_unused]] auto & it : players)
             {
                 for (uint8 i = 0; i < 24; ++i)
                 {
@@ -1202,7 +1202,7 @@ public:
             if (targets.empty())
                 return;
 
-            uint32 side = 0;
+            [[maybe_unused]] uint32 side = 0;
 
             targets.remove_if([&](WorldObject*& target)
             {
