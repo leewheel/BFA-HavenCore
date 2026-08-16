@@ -139,6 +139,7 @@ namespace Trinity::Impl
                 // 修复 OpenSSL 3.6 兼容性：EVP_DigestSignFinal 要求 *siglen 传入缓冲区大小，
                 // 原代码 length 初始为 0，OpenSSL 3.6 会认为缓冲区过小(0 < 32)而返回失败，
                 // 导致玩家登录认证时 HMAC-SHA256 断言崩溃。改为初始化为摘要长度。
+                // （与上游 #281 的修复一致）
                 size_t length = DIGEST_LENGTH;
                 int result = EVP_DigestSignFinal(_ctx, _digest.data(), &length);
                 ASSERT(result == 1);
