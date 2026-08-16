@@ -17,6 +17,7 @@
 
 #include "RSA.h"
 #include "HMAC.h"
+#include "Log.h"
 #include <openssl/core_names.h>
 #include <openssl/params.h>
 #include <openssl/pem.h>
@@ -72,10 +73,29 @@ struct HMAC_SHA256_MD
 
     HMAC_SHA256_MD()
     {
+        // By leewheel 2026-08-16
+        // review 收尾：检查 provider 注册/加载返回值，失败时记录 ERROR 日志，
+        // 避免后续 EnterEncryptedMode 静默失败（Sign 返回 false）难以排查。
+        // End By leewheel
         _lib = OSSL_LIB_CTX_new();
-        OSSL_PROVIDER_add_builtin(_lib, "havencore-rsa-hmac-sha256", &InitProvider);
+        if (!_lib)
+        {
+            TC_LOG_ERROR("server.crypto", "HMAC_SHA256_MD: OSSL_LIB_CTX_new 失败，RSA 签名(HMAC-SHA256 provider)不可用");
+            _handle = nullptr;
+            return;
+        }
+
+        if (OSSL_PROVIDER_add_builtin(_lib, "havencore-rsa-hmac-sha256", &InitProvider) != 1)
+        {
+            TC_LOG_ERROR("server.crypto", "HMAC_SHA256_MD: OSSL_PROVIDER_add_builtin 失败，RSA 签名(HMAC-SHA256 provider)不可用");
+            _handle = nullptr;
+            return;
+        }
+
         // retain fallbacks so RSA itself still resolves from the default provider inside this library context
         _handle = OSSL_PROVIDER_try_load(_lib, "havencore-rsa-hmac-sha256", 1);
+        if (!_handle)
+            TC_LOG_ERROR("server.crypto", "HMAC_SHA256_MD: OSSL_PROVIDER_try_load 失败，RSA 签名(HMAC-SHA256 provider)不可用");
     }
 
     HMAC_SHA256_MD(HMAC_SHA256_MD const&) = delete;
