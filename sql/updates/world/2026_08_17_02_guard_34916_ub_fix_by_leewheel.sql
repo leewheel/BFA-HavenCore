@@ -1,0 +1,6 @@
+-- By leewheel 2026-08-17
+-- 守卫 34916（Gilneas City Guard）无故转身喊话问题
+-- 修复在代码层（SmartScript.cpp 三处空列表防护），无 SQL 修改。
+-- 代码修改文件：src/server/game/AI/SmartScripts/SmartScript.cpp
+-- 备份：TempFiles/SmartScript.cpp.bak_20260817
+-- End By leewheel

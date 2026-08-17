@@ -1449,9 +1449,17 @@ void SmartScript::ProcessAction(SmartScriptHolder& e, Unit* unit, uint32 var0, u
             if (!targets)
                 break;
 
-            // attack random target
-            if (Unit * target = Trinity::Containers::SelectRandomContainerElement(*targets)->ToUnit())
-                me->AI()->AttackStart(target);
+            // By leewheel 2026-08-17
+            // 修复空目标列表时 SelectRandomContainerElement 的下溢未定义行为：
+            // Size(container)-1 在空列表时下溢为 0xFFFFFFFF，std::advance 越界后解引用垃圾指针，
+            // 导致守卫等 SmartAI 在无目标时随机"攻击"不存在的对象（表现：突然转身 + 进入战斗喊话）。
+            if (!targets->empty())
+            {
+                // attack random target
+                if (Unit * target = Trinity::Containers::SelectRandomContainerElement(*targets)->ToUnit())
+                    me->AI()->AttackStart(target);
+            }
+            // End By leewheel
 
             delete targets;
             break;
@@ -1776,8 +1784,12 @@ void SmartScript::ProcessAction(SmartScriptHolder& e, Unit* unit, uint32 var0, u
             {
                 if (ObjectList * targets = GetTargets(e, unit))
                 {
-                    // we want to move to random element
-                    target = Trinity::Containers::SelectRandomContainerElement(*targets);
+                    // By leewheel 2026-08-17
+                    // 与 SMART_ACTION_ATTACK_START 相同的空列表防护：
+                    // 无目标时跳过随机选取，避免 SelectRandomContainerElement 下溢 UB。
+                    if (!targets->empty())
+                        target = Trinity::Containers::SelectRandomContainerElement(*targets);
+                    // End By leewheel
                     delete targets;
                 }
             }
@@ -2693,7 +2705,12 @@ void SmartScript::ProcessAction(SmartScriptHolder& e, Unit* unit, uint32 var0, u
                 {
                     if (IsUnit(obj))
                     {
+                        // By leewheel 2026-08-17
+                        // 防御：事件声音参数全为 0 时 sounds 为空，随机选取会下溢 UB，空则跳过播放。
+                        if (sounds.empty())
+                            break;
                         uint32 sound = Trinity::Containers::SelectRandomContainerElement(sounds);
+                        // End By leewheel
                         obj->PlayDirectSound(sound, onlySelf ? obj->ToPlayer() : nullptr);
                         TC_LOG_DEBUG("scripts.ai", "SmartScript::ProcessAction:: SMART_ACTION_RANDOM_SOUND: target: %s (%s), sound: %u, onlyself: %s",
                             obj->GetName().c_str(), obj->GetGUID().ToString().c_str(), sound, onlySelf ? "true" : "false");
