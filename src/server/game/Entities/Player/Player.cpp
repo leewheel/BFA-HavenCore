@@ -137,6 +137,7 @@
 #include "WorldSession.h"
 #include "WorldStatePackets.h"
 #include <G3D/g3dmath.h>
+#include <sstream>
 
 #define ZONE_UPDATE_INTERVAL (1*IN_MILLISECONDS)
 #define SHOP_UPDATE_INTERVAL (30*IN_MILLISECONDS)
@@ -1702,7 +1703,7 @@ bool Player::TeleportTo(uint32 mapid, float x, float y, float z, float orientati
                 transferPending.OldMapPosition = GetPosition();
                 if (Transport* transport = GetTransport())
                 {
-                    transferPending.Ship = boost::in_place();
+                    transferPending.Ship.emplace();
                     transferPending.Ship->ID = transport->GetEntry();
                     transferPending.Ship->OriginMapID = GetMapId();
                 }
@@ -3320,7 +3321,8 @@ bool Player::AddSpell(uint32 spellId, bool active, bool learning, bool dependent
 
     SkillLineAbilityMapBounds skill_bounds = sSpellMgr->GetSkillLineAbilityMapBounds(spellId);
 
-    //
+    // Only consume a primary profession slot for the top-level profession.
+    // Dependent/child skill-line spells must not consume another slot.
     if (!dependent && spellInfo->IsPrimaryProfessionFirstRank())
     {
         bool alreadyHasProfession = false;
@@ -3370,6 +3372,9 @@ bool Player::AddSpell(uint32 spellId, bool active, bool learning, bool dependent
             if (skill_max_value < new_skill_max_value)
                 skill_max_value = new_skill_max_value;
 SetSkill(spellLearnSkill->skill, spellLearnSkill->step, skill_value, skill_max_value);
+
+            if (spellLearnSkill->skill == SKILL_FISHING && !HasSkill(SKILL_FISHING_2))
+                SetSkill(SKILL_FISHING_2, 1, std::max<uint32>(skill_value, 1), skill_max_value);
         }
     }
     else
@@ -5670,6 +5675,14 @@ bool Player::UpdateCraftSkill(uint32 spellid)
         {
             uint32 skillId = _spell_idx->second->SkillupSkillLineID;
 
+            // Classic Inscription recipes reference the expansion-specific
+            // child skill line in DB2, while the player stores/progresses
+            // Inscription on the parent skill line.
+            if (skillId == SKILL_INSCRIPTION_2)
+                skillId = SKILL_INSCRIPTION;
+            else if (skillId == SKILL_ENGINEERING_2)
+                skillId = SKILL_ENGINEERING;
+
             uint32 SkillValue = GetPureSkillValue(skillId);
 
             // Alchemy Discoveries here
@@ -5714,7 +5727,6 @@ bool Player::UpdateGatherSkill(uint32 SkillId, uint32 SkillValue, uint32 RedLeve
         case SKILL_JEWELCRAFTING:
         case SKILL_JEWELCRAFTING_2:
         case SKILL_INSCRIPTION:
-        case SKILL_INSCRIPTION_2:
             return UpdateSkillPro(SkillId, SkillGainChance(SkillValue, RedLevel+100, RedLevel+50, RedLevel+25)*Multiplicator, gathering_skill_gain);
         case SKILL_SKINNING:
         case SKILL_SKINNING_2:
@@ -5825,8 +5837,6 @@ bool Player::UpdateSkillPro(uint16 skillId, int32 chance, uint32 step)
 
     SetSkillRank(itr->second.pos, new_value);
 
-    // recipe skill line to the parent skill, so explicitly send the skill-up
-    // receive their native client notification and must not be duplicated.
     if (itr->second.uState != SKILL_NEW)
         itr->second.uState = SKILL_CHANGED;
 
@@ -5872,6 +5882,7 @@ void Player::UpdateSkillsForLevel()
         if (!rcEntry)
             continue;
 
+        // Professions and riding use their own progression and must not be
         // scaled from character level.
         if (IsProfessionOrRidingSkill(rcEntry->SkillID))
             continue;
@@ -5986,44 +5997,6 @@ uint16 currVal;
                     itr->second.uState = SKILL_NEW;
                 else                // updated skill, mark as changed to save into database
                     itr->second.uState = SKILL_CHANGED;
-            }
-
-            //
-            if (currVal == 0)
-            {
-                if (SkillLineEntry const* skillEntry = sSkillLineStore.LookupEntry(id))
-                {
-                    if (!skillEntry->ParentSkillLineID && skillEntry->CategoryID == SKILL_CATEGORY_PROFESSION)
-                    {
-                        SkillLineEntry const* classicSkill = nullptr;
-
-                        if (std::vector<SkillLineEntry const*> const* childSkillLines = sDB2Manager.GetSkillLinesForParentSkill(id))
-                        {
-                            for (SkillLineEntry const* childSkillLine : *childSkillLines)
-                            {
-                                if (!childSkillLine->ParentTierIndex)
-                                    continue;
-
-                                if (!classicSkill || childSkillLine->ParentTierIndex < classicSkill->ParentTierIndex)
-                                    classicSkill = childSkillLine;
-                            }
-                        }
-
-                        if (classicSkill && GetPureSkillValue(classicSkill->ID) == 0)
-                        {
-                            uint16 childMax = maxVal;
-
-                            if (SkillRaceClassInfoEntry const* rcEntry = sDB2Manager.GetSkillRaceClassInfo(id, getRace(), getClass()))
-                                if (SkillTiersEntry const* tier = sObjectMgr->GetSkillTier(rcEntry->SkillTierID))
-                                    childMax = tier->Value[classicSkill->ParentTierIndex - 1];
-
-                            if (!childMax)
-                                childMax = maxVal;
-
-                            SetSkill(classicSkill->ID, classicSkill->ParentTierIndex, 1, childMax);
-                        }
-                    }
-                }
             }
         }
         else if (currVal && !newVal) // Deactivate skill line
@@ -6166,7 +6139,10 @@ SetSkill(skillEntry->ParentSkillLineID, skillEntry->ParentTierIndex, std::max<ui
             LearnSkillRewardedSpells(id, newVal);
         }
     }
+    // Expansion-specific profession skills store their progression on the child
+    // skill line, while the client uses the parent profession skill for
     // gathering-node difficulty/color. Keep the parent rank synchronized with
+    // the child and prevent character level from driving profession difficulty.
     if (newVal)
     {
         if (SkillLineEntry const* skillEntry = sSkillLineStore.LookupEntry(id))
@@ -27414,7 +27390,7 @@ void Player::SetRuneCooldown(uint8 index, uint32 cooldown)
 {
     m_runes->Cooldown[index] = cooldown;
     m_runes->SetRuneState(index, (cooldown == 0) ? true : false);
-    int32 activeRunes = std::count(std::begin(m_runes->Cooldown), &m_runes->Cooldown[std::min(GetMaxPower(POWER_RUNES), MAX_RUNES)], 0);
+    int32 activeRunes = std::count(std::begin(m_runes->Cooldown), &m_runes->Cooldown[std::min(GetMaxPower(POWER_RUNES), MAX_RUNES)], 0u);
     if (activeRunes != GetPower(POWER_RUNES))
         SetPower(POWER_RUNES, activeRunes);
 }
@@ -29220,7 +29196,7 @@ void Player::SendItemRefundResult(Item* item, ItemExtendedCostEntry const* iece,
     itemPurchaseRefundResult.Result = error;
     if (!error)
     {
-        itemPurchaseRefundResult.Contents = boost::in_place();
+        itemPurchaseRefundResult.Contents.emplace();
         itemPurchaseRefundResult.Contents->Money = item->GetPaidMoney();
         for (uint8 i = 0; i < MAX_ITEM_EXT_COST_ITEMS; ++i)                             // item cost data
         {
@@ -29779,7 +29755,7 @@ void Player::SendGarrisonInfo() const
             {
                 garrisonInfo.Plots.push_back(&plot->PacketInfo);
                 if (plot->BuildingInfo.PacketInfo)
-                    garrisonInfo.Buildings.push_back(plot->BuildingInfo.PacketInfo.get_ptr());
+                    garrisonInfo.Buildings.push_back(&*plot->BuildingInfo.PacketInfo);
             }
         }
 
@@ -29972,7 +29948,7 @@ void Player::SendPlayerChoice(ObjectGuid sender, int32 choiceId)
 
         if (playerChoiceResponseTemplate.Reward)
         {
-            playerChoiceResponse.Reward = boost::in_place();
+            playerChoiceResponse.Reward.emplace();
             playerChoiceResponse.Reward->TitleID = playerChoiceResponseTemplate.Reward->TitleId;
             playerChoiceResponse.Reward->PackageID = playerChoiceResponseTemplate.Reward->PackageId;
             playerChoiceResponse.Reward->SkillLineID = playerChoiceResponseTemplate.Reward->SkillLineId;
@@ -29989,7 +29965,7 @@ void Player::SendPlayerChoice(ObjectGuid sender, int32 choiceId)
                 rewardEntry.Quantity = item.Quantity;
                 if (!item.BonusListIDs.empty())
                 {
-                    rewardEntry.Item.ItemBonus = boost::in_place();
+                    rewardEntry.Item.ItemBonus.emplace();
                     rewardEntry.Item.ItemBonus->BonusListIDs = item.BonusListIDs;
                 }
             }
@@ -30386,6 +30362,7 @@ TrainerSpellState Player::GetTrainerSpellState(TrainerSpell const* trainer_spell
     if (hasSpell)
         return TRAINER_SPELL_GRAY;
 
+    // BFA uses expansion-specific profession skill lines. Classic Jewelcrafting
     // trainer data can still reference the generic Jewelcrafting parent skill.
     uint32 const reqSkillLine = trainer_spell->ReqSkillLine == SKILL_JEWELCRAFTING
         ? uint32(SKILL_JEWELCRAFTING_2)

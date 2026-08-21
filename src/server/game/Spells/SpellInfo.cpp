@@ -3797,7 +3797,7 @@ bool SpellInfo::SpellCancelsAuraEffect(AuraEffect const* aurEff) const
             case SPELL_AURA_MECHANIC_IMMUNITY:
                 if (miscValue != aurEff->GetSpellInfo()->Mechanic)
                 {
-                    if (miscValue != aurEff->GetSpellEffectInfo()->Mechanic)
+                    if (miscValue != uint32(aurEff->GetSpellEffectInfo()->Mechanic))
                         continue;
                 }
                 break;
