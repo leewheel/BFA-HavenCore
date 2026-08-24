@@ -4216,7 +4216,8 @@ void Spell::SendSpellStart()
 
         //TODO: There is a crash caused by a spell with CAST_FLAG_RUNE_LIST casted by a creature
         //The creature is the mover of a player, so HandleCastSpellOpcode uses it as the caster
-        if (Player* player = m_caster->ToPlayer())
+        Player* player = m_caster->ToPlayer();
+        if (player)
         {
             castData.RemainingRunes->Start = m_runesState; // runes state before
             castData.RemainingRunes->Count = player->GetRunesState(); // runes state after
@@ -4334,7 +4335,8 @@ void Spell::SendSpellGo()
 
         //TODO: There is a crash caused by a spell with CAST_FLAG_RUNE_LIST casted by a creature
         //The creature is the mover of a player, so HandleCastSpellOpcode uses it as the caster
-        if (Player* player = m_caster->ToPlayer())
+        Player* player = m_caster->ToPlayer();
+        if (player)
         {
             castData.RemainingRunes->Start = m_runesState; // runes state before
             castData.RemainingRunes->Count = player->GetRunesState(); // runes state after
@@ -5590,6 +5592,18 @@ SpellCastResult Spell::CheckCast(bool strict, uint32* param1 /*= nullptr*/, uint
                     // we need a go target in case of TARGET_GAMEOBJECT_TARGET
                     || (effect->TargetA.GetTarget() == TARGET_GAMEOBJECT_TARGET && !m_targets.GetGOTarget()))
                     return SPELL_FAILED_BAD_TARGETS;
+
+                if (GameObject* go = m_targets.GetGOTarget())
+                {
+                    GameObjectTemplate const* goInfo = go->GetGOInfo();
+
+                    if ((goInfo->type == GAMEOBJECT_TYPE_GATHERING_NODE ||
+                         goInfo->type == GAMEOBJECT_TYPE_CHEST) &&
+                        m_caster->IsMounted() &&
+                        !goInfo->IsUsableMounted() &&
+                        !m_caster->ToPlayer()->HasPlayerLocalFlag(PLAYER_LOCAL_FLAG_CAN_USE_OBJECTS_MOUNTED))
+                        return SPELL_FAILED_CANT_DO_THAT_RIGHT_NOW;
+                }
 
                 Item* pTempItem = nullptr;
                 if (m_targets.GetTargetMask() & TARGET_FLAG_TRADE_ITEM)

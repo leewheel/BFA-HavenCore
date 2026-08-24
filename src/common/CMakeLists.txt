@@ -60,7 +60,6 @@ target_include_directories(common
 
 target_link_libraries(common
   PRIVATE
-    process
     trinity-core-interface
   PUBLIC
     boost
@@ -72,7 +71,8 @@ target_link_libraries(common
     openssl
     valgrind
     threads
-    jemalloc)
+    jemalloc
+    short_alloc)
 
 add_dependencies(common revision_data.h)
 

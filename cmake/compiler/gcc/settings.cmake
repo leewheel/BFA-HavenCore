@@ -35,7 +35,6 @@ if( WITH_WARNINGS )
 
   target_compile_options(trinity-warning-interface
     INTERFACE
-      -Wno-error=unused-variable
       -Wno-error=unused-parameter
       -Wno-deprecated-copy) # warning in g3d
 
@@ -48,6 +47,24 @@ if( WITH_COREDEBUG )
       -g3)
 
   message(STATUS "GCC: Debug-flags set (-g3)")
+endif()
+
+if(ASAN)
+  target_compile_options(trinity-compile-option-interface
+    INTERFACE
+      -fno-omit-frame-pointer
+      -fsanitize=address
+      -fsanitize-recover=address
+      -fsanitize-address-use-after-scope)
+
+  target_link_options(trinity-compile-option-interface
+    INTERFACE
+      -fno-omit-frame-pointer
+      -fsanitize=address
+      -fsanitize-recover=address
+      -fsanitize-address-use-after-scope)
+
+  message(STATUS "GCC: Enabled Address Sanitizer")
 endif()
 
 if (BUILD_SHARED_LIBS)
