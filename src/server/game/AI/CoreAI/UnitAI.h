@@ -19,6 +19,7 @@
 #define TRINITY_UNITAI_H
 
 #include "Containers.h"
+#include "Errors.h"
 #include "EventMap.h"
 #include "ObjectGuid.h"
 #include "ThreatManager.h"
@@ -149,6 +150,9 @@ class TC_GAME_API UnitAI
         virtual ~UnitAI() { }
 
         virtual bool CanAIAttack(Unit const* /*target*/) const { return true; }
+
+        // Optional encounter-specific quest credit policy; ordinary combat is unchanged.
+        virtual bool CanReceiveKillCredit(Player const* /*player*/) const { return true; }
         virtual void AttackStart(Unit* /*target*/);
         virtual void UpdateAI(uint32 diff) = 0;
         void UpdateOperations(uint32 diff);
@@ -191,7 +195,7 @@ class TC_GAME_API UnitAI
             std::list<Unit*> targetList;
             if (targetType == SELECT_TARGET_MAXDISTANCE || targetType == SELECT_TARGET_MINDISTANCE)
             {
-                for (ThreatReference* ref : mgr.GetUnsortedThreatList())
+                for (ThreatReference const* ref : mgr.GetUnsortedThreatList())
                 {
                     if (ref->IsOffline())
                         continue;
@@ -205,7 +209,7 @@ class TC_GAME_API UnitAI
                 if (currentVictim)
                     targetList.push_back(currentVictim);
 
-                for (ThreatReference* ref : mgr.GetSortedThreatList())
+                for (ThreatReference const* ref : mgr.GetSortedThreatList())
                 {
                     if (ref->IsOffline())
                         continue;
@@ -280,7 +284,7 @@ class TC_GAME_API UnitAI
 
             if (targetType == SELECT_TARGET_MAXDISTANCE || targetType == SELECT_TARGET_MINDISTANCE)
             {
-                for (ThreatReference* ref : mgr.GetUnsortedThreatList())
+                for (ThreatReference const* ref : mgr.GetUnsortedThreatList())
                 {
                     if (ref->IsOffline())
                         continue;
@@ -294,7 +298,7 @@ class TC_GAME_API UnitAI
                 if (currentVictim)
                     targetList.push_back(currentVictim);
 
-                for (ThreatReference* ref : mgr.GetSortedThreatList())
+                for (ThreatReference const* ref : mgr.GetSortedThreatList())
                 {
                     if (ref->IsOffline())
                         continue;
